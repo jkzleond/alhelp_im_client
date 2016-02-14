@@ -19,6 +19,16 @@ li{list-style:none;}
 .xxim_main em, .xxim_main i, .layim_chatbox em, .layim_chatbox i{font-style:normal; font-weight:400;}
 .xxim_main h5{font-size:100%; font-weight:400;}
 
+/* 通用 */
+.xxim_label_rt {
+    position:absolute;
+    right: 0px;
+    top: 0px;
+    font-size: 9px;
+    padding: 1px;
+}
+.xxim_bgc_red {background-color: red}
+.xxim_color_white {color:#FFF}
 /* 搜索栏 */
 .xxim_search{position:relative; padding-left:40px; height:40px; border-bottom:1px solid #DCDCDC; background-color:#fff;}
 .xxim_search i{left:10px; top:12px; width:16px; height:16px; background-position:-175px -40px;}

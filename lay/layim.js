@@ -52,7 +52,12 @@
                 need_token: true
             },
             group_members: {
-                url: '/v1/im/group/members',
+                url: '/v1/im/group/:id/members',
+                method: 'GET',
+                need_token: true
+            },
+            history: {
+                url: '/v1/im/message/history/:type/:to_id/:p/:ps',
                 method: 'GET',
                 need_token: true
             },
@@ -67,7 +72,7 @@
                 need_token: true
             },
             send: {
-                url: '/v1/im/message',
+                url: '/v1/im/message/:type/:to_id',
                 method: 'POST',
                 need_token: true
             }
@@ -107,12 +112,13 @@
     }, dom = [$(window), $(document), $('html'), $('body')], xxim = {};
 
     xxim.EVENT = {
+        CHAT_TAB: 'chat_tab',
         MSG_COME_IN: 'msg_come_in'
     };
 
     //根据url规则生成url
     xxim.url = function(api_url, data){
-        var url = api_url.replace(/:(\w+)/, function(p,n){
+        var url = api_url.replace(/:(\w+)/g, function(p,n){
             if(data.hasOwnProperty(n)){
                 var arg = data[n];
                 delete data[n];
@@ -127,7 +133,6 @@
 
     //Ajax请求
     xxim.json = function(api_config, data, callback, error){
-
         var url = xxim.url(api_config.url, data);
 
         var ajax_options = {
@@ -140,6 +145,7 @@
         };
 
         if (api_config.method != 'GET') {
+            ajax_options.contentType = 'application/json';
             ajax_options.data = JSON.stringify(data);
             ajax_options.processData = false;
         } else {
@@ -364,7 +370,8 @@
                 offset: [(($(window).height() - 493)/2)+'px', ''],
                 page: {
                     html: log.html
-                }, success: function(layero){
+                },
+                success: function(layero){
                     log.success(layero);
                 }
             })
@@ -388,7 +395,7 @@
         if(param.type === 'group'){
             log.chatgroup.find('ul').removeClass('layim_groupthis');
             log.chatgroup.append('<ul class="layim_groupthis" id="layim_group'+ param.type + param.member_id +'"></ul>');
-            xxim.getGroups(param);
+            xxim.getGroups({type:param.type, id:param.member_id});
         }
         //点击群员切换聊天窗
         log.chatgroup.on('click', 'ul>li', function(){
@@ -420,6 +427,7 @@
 
         $('#layim_write').focus();
 
+        $(xxim).trigger(xxim.EVENT.CHAT_TAB, xxim.nowchat);
     };
 
     //弹出聊天窗
@@ -450,20 +458,23 @@
     xxim.getGroups = function(param){
         var keys = param.type + param.id, str = '',
         groupss = xxim.chatbox.find('#layim_group'+ keys);
+
         groupss.addClass('loading');
-        xxim.json(config.api.group_members, {}, function(datas){
-            if(datas.status === 1){
-                var ii = 0, lens = datas.data.length;
+        xxim.json(config.api.group_members, {
+            id: param.id
+        }, function(resp){
+            if(resp.success === true){
+                var ii = 0, list = resp.data.list, lens = list.length;
                 if(lens > 0){
                     for(; ii < lens; ii++){
-                        str += '<li data-id="'+ datas.data[ii].id +'" type="one"><img src="'+ datas.data[ii].face +'"><span class="xxim_onename">'+ datas.data[ii].name +'</span></li>';
+                        str += '<li data-id="'+ list[ii].member_id +'" type="single"><img class="xxim_oneface" src="'+ list[ii].avatar +'"><span class="xxim_onename">'+ list[ii].nickname +'</span></li>';
                     }
                 } else {
                     str = '<li class="layim_errors">没有群员</li>';
                 }
 
             } else {
-                str = '<li class="layim_errors">'+ datas.msg +'</li>';
+                str = '<li class="layim_errors">'+ resp.msg +'</li>';
             }
             groupss.removeClass('loading');
             groupss.html(str);
@@ -482,10 +493,12 @@
         //发送
         log.send = function(){
             var data = {
+                mime_type: 0,
                 content: node.imwrite.val(),
-                id: xxim.nowchat.id,
+                type: xxim.nowchat.type,
+                to_id: xxim.nowchat.member_id,
                 sign_key: '', //密匙
-                _: +new Date
+                _: Date.now()
             };
 
             if(data.content.replace(/\s/g, '') === ''){
@@ -526,14 +539,28 @@
                 }, 'me'));
                 node.imwrite.val('').focus();
                 log.imarea.scrollTop(log.imarea[0].scrollHeight);*/
-
+                xxim.node.imwrite.val('').focus();
+                var today = new Date();
+                var year = today.getFullYear();
+                var month = today.getMonth() + 1;
+                month = month > 10 ? month.toString() : '0' + month;
+                var date = today.getDate();
+                date = date > 10 ? date.toString() : '0' + date;
+                var hours = today.getHours();
+                hours = hours > 10 ? hours.toString() : '0' + hours;
+                var minutes = today.getMinutes();
+                minutes = minutes > 10 ? minutes.toString() : '0' + minutes;
+                var seconds = today.getSeconds();
+                seconds = seconds > 10 ? seconds.toString() : '0' + seconds;
+                var now = year + '-' + month + '-' + date + ' ' + hours + ':' + minutes + ':' + seconds;
                 xxim.render.msg({
-                    time: '2014-04-26 0:37',
+                    time: now,
                     nickname: config.user.nickname,
                     avatar: config.user.avatar,
                     content: data.content
                 }, 'me');
-
+                /*
+                模拟回复
                 setTimeout(function(){
                     xxim.render.msg({
                         time: '2014-04-26 0:38',
@@ -542,12 +569,8 @@
                         content: config.autoReplay[(Math.random()*config.autoReplay.length) | 0]
                     });
                 }, 500);
-
-                /*
-                that.json(config.api.sendurl, data, function(datas){
-
-                });
                 */
+                xxim.json(config.api.send, data);
             }
 
         };
@@ -643,9 +666,23 @@
             $('#layim_sendtype').hide();
         });
 
-        //消息进入事件
+        //聊天窗打开事件
+        $(xxim).bind(xxim.EVENT.CHAT_TAB, function(nowchat){
+            //标记未读消息为已读
+            xxim.action.mark_read(nowchat.type, nowchat.member_id).done(function(resp){
+                //读取聊天记录
+                return xxim.action.get_history(nowchat.type, nowchat.member_id);
+            }).done(function(resp){
+                //TODO
+
+                xxim.render.msg();
+            });
+
+        });
+
+        //新消息进入事件
         $(xxim).bind(xxim.EVENT.MSG_COME_IN, function(data){
-            //TODO render msg
+            xxim.render.msg();
         });
     };
 
@@ -722,7 +759,7 @@
                         str += '<li class="xxim_liston">'
                             +'<ul class="xxim_chatlist">';
                         for(var i = 0; i < myflen; i++){
-                            str += '<li data-id="'+ list[i].contact_id +'" class="xxim_childnode" type="' + (list[i].is_to_group == '0' ? 'single' : 'group') + '"><img src="'+ list[i].avatar +'"  class="xxim_oneface"><span  class="xxim_onename">'+ list[i].name +'</span><em class="xxim_time">'+ '' +'</em></li>';
+                            str += '<li data-id="'+ list[i].contact_id +'" class="xxim_childnode" type="' + (list[i].is_to_group == '0' ? 'single' : 'group') + '"><span style="position:relative"><img src="'+ list[i].avatar +'"  class="xxim_oneface"><span style="display:' + (list[i].no_read_count > 0 ? 'block' : 'none') + ';position:absolute; right: 0px; top: 0px; height: 12px; width: 12px; padding: 1px; border-radius: 100%; background-color: red; color: #FFF; font-size: 12px; font-weight bold; line-height: 12px; text-align: center;">' + list[i].no_read_count + '</span></span><span  class="xxim_onename">'+ list[i].name +'</span><em class="xxim_time">'+ '' +'</em></li>';
                         }
                         str += '</ul></li>';
                     }
@@ -750,7 +787,7 @@
                 type: type,
                 from_id: from_id
             };
-            xxim.json(config.api.msg, data, success, fail).done(function(resp){
+            return xxim.json(config.api.msg, data, success, fail).done(function(resp){
                 if(resp.success && resp.data){
                     $(xxim).trigger(xxim.EVENT.MSG_COME_IN, resp.data);
                 }
@@ -764,13 +801,26 @@
                 type: type,
                 from_id: from_id
             };
-            xxim.json(config.api.mark_read, data, success, fail).done(function(resp){
+
+            return xxim.json(config.api.mark_read, data, success, fail).done(function(resp){
 
             }).fail(function(resp){
                 //请求失败后,隔500毫秒重发
                 setTimeout(function(){
                     xxim.action.mark_read(type, from_id);
                 }, 500);
+            });
+        },
+        /**
+         * 获取聊天记录
+         * @param type
+         * @param from_id
+         * @param success
+         * @param fail
+         */
+        get_history: function(type, to_id, success, fail){
+            return xxim.json(config.api.history, {type:type, to_id: to_id}, success, fail).fail(function(){
+
             });
         }
     };
@@ -791,6 +841,8 @@
                     if (xxim.nowchat) {
                         xxim.action.get_msg(xxim.nowchat.type, xxim.nowchat.id);
                     }
+                    //刷新最近联系人
+                    xxim.getData(2);
                 }
 
                 setTimeout(_callee_func, 0);
@@ -803,8 +855,9 @@
     //渲染
     xxim.render = {
         //渲染消息框
-        msg: function(param, type){
-            var keys = xxim.nowchat.type + xxim.nowchat.member_id;
+        msg: function(param, type, nowchat){
+            var chatting = nowchat || xxim.nowchat;
+            var keys = chatting.type + chatting.member_id;
 
             //消息框模板
             var msg_html = '<li class="'+ (type === 'me' ? 'layim_chateme' : '') +'">'
@@ -813,9 +866,9 @@
             if(type === 'me'){
                 msg_html += '<span class="layim_chattime">'+ param.time +'</span>'
                     +'<span class="layim_chatname">'+ param.nickname +'</span>'
-                    +'<img src="'+ param.face +'" >';
+                    +'<img src="'+ param.avatar +'" >';
             } else {
-                msg_html += '<img src="'+ param.face +'" >'
+                msg_html += '<img src="'+ param.avatar +'" >'
                     +'<span class="layim_chatname">'+ param.nickname +'</span>'
                     +'<span class="layim_chattime">'+ param.time +'</span>';
             }
@@ -827,13 +880,12 @@
             var msg_area = xxim.chatbox.find('#layim_area'+ keys);
 
             msg_area.append(msg_html);
-            xxim.node.imwrite.val('').focus();
             msg_area.scrollTop(msg_area[0].scrollHeight);
         }
     };
 
     //渲染骨架
-    xxim.view = (function(){
+    xxim.view = function(){
         var xximNode = xxim.layimNode = $('<div id="xximmm" class="xxim_main">'
                 +'<div class="xxim_top" id="xxim_top">'
                 +'  <div class="xxim_search"><i></i><input id="xxim_searchkey" /><span id="xxim_closesearch">×</span></div>'
@@ -864,31 +916,33 @@
             +'</ul>'
         +'</div>');
         dom[3].append(xximNode);
+    };
 
-        //处理登陆
-        var href = window.location.href;
-        var username = href.match(/u=([^\&]+)/)[1];
-        var password = href.match(/p=([^\&]+)/)[1];
+    xxim.view();
 
-        xxim.json(config.api.login, {
-            passwordCredentials: {
-                username: username,
-                password: password
-            }
-        }).done(function(resp){
-            if(resp.success == true){
-                config.user.member_id = resp.data.member.id;
-                config.user.nickname = resp.data.member.nickname;
-                config.user.avatar = resp.data.member.avatar;
-                config.user.token = resp.data['X-Subject-Token'];
-                xxim.renode();
-                xxim.getData(0);
-                xxim.event();
-                xxim.layinit();
-                xxim.heartbeat();
-            }
-        });
-    }());
+    //处理登陆
+    var href = window.location.href;
+    var username = href.match(/u=([^\&]+)/)[1];
+    var password = href.match(/p=([^\&]+)/)[1];
+
+    xxim.json(config.api.login, {
+        passwordCredentials: {
+            username: username,
+            password: password
+        }
+    }).done(function(resp){
+        if(resp.success == true){
+            config.user.member_id = resp.data.member.id;
+            config.user.nickname = resp.data.member.nickname;
+            config.user.avatar = resp.data.member.avatar;
+            config.user.token = resp.data['X-Subject-Token'];
+            xxim.renode();
+            xxim.getData(0);
+            xxim.event();
+            xxim.layinit();
+            xxim.heartbeat();
+        }
+    });
 
 }(window);
 
